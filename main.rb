@@ -12,12 +12,12 @@ $temporary_path = env_has_key("AC_TEMP_DIR")
 $temporary_path += "/appcircle_install_certificate_and_profile"
 
 ###### Run Command Function
-def run_command(command,skip_abort)
+def run_command(command, skip_abort, env_vars = {})
   puts "@@[command] #{command}"
   status = nil
   stdout_str = nil
   stderr_str = nil
-  Open3.popen3(command) do |stdin, stdout, stderr, wait_thr|
+  Open3.popen3(env_vars, command) do |stdin, stdout, stderr, wait_thr|
     stdout.each_line do |line|
       puts line
     end
@@ -44,14 +44,16 @@ def create_keychain()
   keychain_path = "#$temporary_path/#{SecureRandom.uuid}.keychain"
   keychain_password = [*('a'..'z'),*('0'..'9')].shuffle[0,16].join
 
-  command_create_keychain = "security create-keychain -p #{keychain_password} \"#{keychain_path}\""
-    run_command(command_create_keychain,false)
-  
+  env_keychain = { "AC_KEYCHAIN_PASS" => keychain_password }
+
+  command_create_keychain = "security create-keychain -p \"$AC_KEYCHAIN_PASS\" \"#{keychain_path}\""
+    run_command(command_create_keychain, false, env_keychain)
+
     command_set_settings = "security set-keychain-settings \"#{keychain_path}\""
-    run_command(command_set_settings,false)
-  
-    command_unlock_keychain = "security unlock-keychain -p #{keychain_password} \"#{keychain_path}\""
-    run_command(command_unlock_keychain,false)
+    run_command(command_set_settings, false)
+
+    command_unlock_keychain = "security unlock-keychain -p \"$AC_KEYCHAIN_PASS\" \"#{keychain_path}\""
+    run_command(command_unlock_keychain, false, env_keychain)
 
     command_list = "security list-keychain -d user"
     run_command(command_list,false)
@@ -79,9 +81,10 @@ def import_certificate(keychain_path)
     x += 2
   end
 
-  cert_array.each_with_index do |data,index|
-    command_import_certificate = "security import #{data["certificate"]} -P \"#{data["password"]}\" -A -t cert -f pkcs12 -k \"#{keychain_path}\""
-    run_command(command_import_certificate,false)
+  cert_array.each_with_index do |data, index|
+    env_vars = { "AC_CERT_PASS" => data["password"] }
+    command_import_certificate = "security import #{data["certificate"]} -P \"$AC_CERT_PASS\" -A -t cert -f pkcs12 -k \"#{keychain_path}\""
+    run_command(command_import_certificate, false, env_vars)
   end
 
   return cert_array
